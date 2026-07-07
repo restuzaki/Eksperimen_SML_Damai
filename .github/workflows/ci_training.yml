@@ -44,15 +44,42 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-          echo "Mencari Run ID yang sukses..."
-          RUN_ID=$(python -c "import mlflow; mlflow.set_tracking_uri('$MLFLOW_TRACKING_URI'); df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string=\"status = 'FINISHED'\"); df_sorted = df.sort_values('start_time', ascending=False); print(df_sorted.iloc[0].run_id)")
-          echo "Model berhasil dilatih. Menggunakan Run ID yang valid: $RUN_ID"
 
-          echo "Menunggu 15 detik agar sinkronisasi server DagsHub selesai..."
-          sleep 15
+          cat << 'EOF' > build_script.py
+          import mlflow
+          import os
+          import time
 
-          echo "Mendownload model artifact ke environment lokal GitHub Actions..."
-          python -c "import mlflow; mlflow.set_tracking_uri('$MLFLOW_TRACKING_URI'); mlflow.artifacts.download_artifacts(artifact_uri='runs:/$RUN_ID/model', dst_path='./local_model_dir')"
+
+          tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
+          mlflow.set_tracking_uri(tracking_uri)
+
+
+          print("Mencari Run ID yang sukses...")
+          df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
+          run_id = df.sort_values('start_time', ascending=False).iloc[0].run_id
+          print(f"Menggunakan Run ID: {run_id}")
+
+
+          artifact_uri = f"runs:/{run_id}/model"
+          print(f"Mendownload model artifact dari {artifact_uri}...")
+
+
+          for attempt in range(4):
+              try:
+                  mlflow.artifacts.download_artifacts(artifact_uri=artifact_uri, dst_path='./local_model_dir')
+                  print("Download artefak berhasil!")
+                  break
+              except Exception as e:
+                  print(f"Artefak belum siap di DagsHub (Percobaan {attempt+1}/4). Menunggu 15 detik...")
+                  time.sleep(15)
+          else:
+              raise Exception("Gagal mendownload artefak")
+          EOF
+
+
+          python build_script.py
+
 
           echo "Membangun Docker Image..."
           mlflow models build-docker -m "./local_model_dir/model" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
