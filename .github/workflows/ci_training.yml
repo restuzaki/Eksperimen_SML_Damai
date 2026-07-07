@@ -34,7 +34,7 @@ jobs:
       - name: Run MLflow Project (Training Model)
         run: |
           echo "Menjalankan pelatihan model otomatis..."
-          mlflow run Workflow-CI/MLProject/ --env-manager=local
+          mlflow run Workflow-CI/MLProject/ --env-manager=local --experiment-name="Phishing_Detection_CI_Pipeline"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
