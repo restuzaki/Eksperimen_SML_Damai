@@ -34,7 +34,7 @@ jobs:
       - name: Run MLflow Project (Training Model)
         run: |
           echo "Menjalankan pelatihan model otomatis..."
-          mlflow run Workflow-CI/MLProject/
+          mlflow run Workflow-CI/MLProject/ --env-manager=local
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
