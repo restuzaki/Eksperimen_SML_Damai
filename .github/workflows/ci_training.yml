@@ -48,11 +48,11 @@ jobs:
           RUN_ID=$(python -c "import mlflow; mlflow.set_tracking_uri('$MLFLOW_TRACKING_URI'); df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string=\"status = 'FINISHED'\"); df_sorted = df.sort_values('start_time', ascending=False); print(df_sorted.iloc[0].run_id)")
           echo "Model berhasil dilatih. Menggunakan Run ID yang valid: $RUN_ID"
 
-          echo "Menunggu 15 detik agar sinkronisasi server DagsHub"
+          echo "Menunggu 15 detik agar sinkronisasi server DagsHub selesai..."
           sleep 15
 
           echo "Mendownload model artifact ke environment lokal GitHub Actions..."
-          python -c "import mlflow; mlflow.set_tracking_uri('$MLFLOW_TRACKING_URI'); mlflow.artifacts.download_artifacts(artifact_uri=f'runs:/{RUN_ID}/model', dst_path='./local_model_dir')"
+          python -c "import mlflow; mlflow.set_tracking_uri('$MLFLOW_TRACKING_URI'); mlflow.artifacts.download_artifacts(artifact_uri='runs:/'$RUN_ID'/model', dst_path='./local_model_dir')"
 
           echo "Membangun Docker Image..."
           mlflow models build-docker -m "./local_model_dir/model" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
