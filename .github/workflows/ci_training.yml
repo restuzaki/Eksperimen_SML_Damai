@@ -44,12 +44,12 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
+          echo "Mencari Run ID yang sukses..."
+          RUN_ID=$(python -c "import mlflow; mlflow.set_tracking_uri('$MLFLOW_TRACKING_URI'); df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string=\"status = 'FINISHED'\"); df_sorted = df.sort_values('start_time', ascending=False); print(df_sorted.iloc[0].run_id)")
+          echo "Model berhasil dilatih. Menggunakan Run ID yang valid: $RUN_ID"
 
-          RUN_ID=$(python -c "import mlflow; mlflow.set_tracking_uri('$MLFLOW_TRACKING_URI'); df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline']); print(df.iloc[0].run_id)")
-          echo "Model berhasil dilatih. Menggunakan Run ID: $RUN_ID"
-
-
+          echo "Membangun Docker Image..."
           mlflow models build-docker -m "runs:/$RUN_ID/model" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
 
-
+          echo "Mengirim (Push) Image ke Docker Hub..."
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
