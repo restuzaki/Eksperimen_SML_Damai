@@ -54,32 +54,32 @@ jobs:
           mlflow.set_tracking_uri(tracking_uri)
           client = MlflowClient()
 
-          print("Mencari Run ID yang punya artefak model...")
+          print("Mencari Run ID yang punya artefak MLmodel...")
           df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
           df_sorted = df.sort_values('start_time', ascending=False)
 
-          # Looping untuk mencari Run ID yang benar-benar punya folder 'model' (bukan Run Induk yang kosong)
           target_run_id = None
           for _, row in df_sorted.iterrows():
               artifacts = client.list_artifacts(row.run_id)
-              if any(a.path == "model" for a in artifacts):
+              paths = [a.path for a in artifacts]
+              # Cek apakah ada file MLmodel atau folder model di dalamnya
+              if any("MLmodel" in p or "model" in p for p in paths):
                   target_run_id = row.run_id
                   break
 
           if not target_run_id:
-              raise Exception("Gagal! Tidak ada Run ID terbaru yang menyimpan folder 'model'.")
+              raise Exception("Gagal! Tidak ditemukan artefak model di DagsHub.")
               
           print(f"Menggunakan Run ID yang valid: {target_run_id}")
 
-          print("Mendownload model artifact...")
+          print("Mendownload SEMUA artifact dari Run tersebut...")
           for attempt in range(4):
               try:
-                  mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{target_run_id}/model", dst_path='./local_model_dir')
+                  mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{target_run_id}", dst_path='./local_model_dir')
                   print(" Download artefak berhasil!")
                   break
               except Exception as e:
-                  print(f"Menunggu sinkronisasi DagsHub... (Percobaan {attempt+1}/4)")
-                  print(str(e))
+                  print(f" Menunggu sinkronisasi DagsHub... (Percobaan {attempt+1}/4)")
                   time.sleep(15)
           else:
               raise Exception("Gagal mendownload artefak.")
@@ -87,8 +87,12 @@ jobs:
 
           python build_script.py
 
+          echo "Mencari lokasi pasti dari file MLmodel..."
+          MODEL_DIR=$(dirname $(find ./local_model_dir -name "MLmodel" | head -n 1))
+          echo "Model ditemukan di direktori: $MODEL_DIR"
+
           echo "Membangun Docker Image..."
-          mlflow models build-docker -m "./local_model_dir/model" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
+          mlflow models build-docker -m "$MODEL_DIR" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
 
           echo "Mengirim (Push) Image ke Docker Hub..."
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
