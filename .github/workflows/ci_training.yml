@@ -47,11 +47,12 @@ jobs:
           cat << 'EOF' > build_script.py
           import mlflow
           import os
-          import time
+          from mlflow.tracking import MlflowClient
 
 
           tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
           mlflow.set_tracking_uri(tracking_uri)
+          client = MlflowClient()
 
 
           print("Mencari Run ID yang sukses...")
@@ -60,27 +61,27 @@ jobs:
           print(f"Menggunakan Run ID: {run_id}")
 
 
-          artifact_uri = f"runs:/{run_id}/model"
-          print(f"Mendownload model artifact dari {artifact_uri}...")
+          print("\n Cek artefak di DagsHub...")
+          artifacts = client.list_artifacts(run_id)
 
-          for attempt in range(4):
-              try:
-                  mlflow.artifacts.download_artifacts(artifact_uri=artifact_uri, dst_path='./local_model_dir')
-                  print("Download artefak berhasil!")
-                  break
-              except Exception as e:
-                  print(f" Percobaan {attempt+1}/4 gagal. DETAIL ERROR ASLI:")
-                  print(str(e))
-                  print("Menunggu 15 detik sebelum mencoba lagi...")
-                  time.sleep(15)
-          else:
-              raise Exception(" Gagal mendownload artefak secara permanen.")
+          if not artifacts:
+              raise Exception("Tidak ada artefak sama sekali. Berarti saat step 'Training Model' tadi, file model gagal dikirim ke DagsHub.")
+
+          print("Daftar file/folder yang berhasil ditemukan di DagsHub:")
+          for a in artifacts:
+              print(f" - {a.path}")
+
+          if not any(a.path == "model" for a in artifacts):
+              raise Exception("Folder 'model' tidak ada di daftar!")
+
+
+          print("\n Folder 'model' ditemukan! Mulai mendownload...")
+          mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{run_id}/model", dst_path='./local_model_dir')
+          print("Download selesai!")
           EOF
 
-          # Menjalankan script Python tersebut
           python build_script.py
 
-          # Melanjutkan proses Docker
           echo "Membangun Docker Image..."
           mlflow models build-docker -m "./local_model_dir/model" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
 
