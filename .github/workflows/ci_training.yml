@@ -4,17 +4,22 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "Workflow-CI/**"
+      - ".github/workflows/ci_training.yml"
 
 jobs:
   mlops-pipeline:
     runs-on: ubuntu-latest
+
     env:
       MLFLOW_TRACKING_USERNAME: restuzaki
       MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
       MLFLOW_TRACKING_URI: https://dagshub.com/restuzaki/Eksperimen_SML_Damai.mlflow
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -26,50 +31,66 @@ jobs:
           python -m pip install --upgrade pip
           pip install mlflow dagshub pandas scikit-learn
 
-      - name: Train Model
+      - name: Run MLflow Project (Training Model)
         run: |
+          echo "Menjalankan pelatihan model otomatis..."
+          mlflow run Workflow-CI/MLProject/ --env-manager=local --experiment-name="Phishing_Detection_CI_Pipeline"
 
-          cd Workflow-CI/MLProject
-          python modelling.py
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and Push Docker Image
         run: |
           cat << 'EOF' > build_script.py
           import mlflow
           import os
+          import time
           from mlflow.tracking import MlflowClient
-          import shutil
 
-          mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+          mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI"))
           client = MlflowClient()
 
+          print("Menunggu 20 detik agar DagsHub sinkron...")
+          time.sleep(20)
 
+          print("Mencari Run ID terbaru...")
           df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
-          run_id = df.sort_values('start_time', ascending=False).iloc[0].run_id
-          print(f"Target Run ID: {run_id}")
+          target_run_id = df.sort_values('start_time', ascending=False).iloc[0].run_id
+          print(f"Target Run ID: {target_run_id}")
 
-          client.download_artifacts(run_id=run_id, path="", dst_path='./downloaded_artifacts')
+          print("Mendownload seluruh artefak (root directory)...")
+          success = False
+          for attempt in range(4):
+              try:
+                  # Menggunakan path="" untuk mengunduh semua file tanpa mempedulikan nama foldernya
+                  client.download_artifacts(run_id=target_run_id, path="", dst_path='./local_model_dir')
+                  print("Download artefak berhasil.")
+                  success = True
+                  break
+              except Exception as e:
+                  print(f"Percobaan {attempt+1} gagal: {e}")
+                  time.sleep(15)
 
-          print("Daftar semua file yang terunduh:")
-          for root, dirs, files in os.walk('./downloaded_artifacts'):
-              for file in files:
-                  print(os.path.join(root, file))
+          if not success:
+              raise Exception("Gagal mendownload artefak dari DagsHub.")
+              
+
+          if not any('MLmodel' in filename for root, dirs, files in os.walk('./local_model_dir') for filename in files):
+              raise Exception("File MLmodel tidak ditemukan di hasil download!")
           EOF
 
           python build_script.py
 
+          echo "Mencari lokasi fisik file MLmodel..."
 
-          MLMODEL_PATH=$(find ./downloaded_artifacts -name "MLmodel" | head -n 1)
+          MODEL_DIR=$(dirname $(find ./local_model_dir -name "MLmodel" | head -n 1))
+          echo "Model ditemukan di direktori: $MODEL_DIR"
 
-          if [ -z "$MLMODEL_PATH" ]; then
-            echo "Error: File MLmodel tidak ditemukan di manapun!"
-            exit 1
-          fi
-
-
-          MODEL_DIR=$(dirname "$MLMODEL_PATH")
-          echo "Model ditemukan di: $MODEL_DIR"
-
-
+          echo "Membangun Docker Image..."
           mlflow models build-docker -m "$MODEL_DIR" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
+
+          echo "Mengirim Image ke Docker Hub..."
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
