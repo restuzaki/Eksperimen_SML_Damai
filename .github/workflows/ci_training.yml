@@ -37,8 +37,10 @@ jobs:
           cat << 'EOF' > build_script.py
           import mlflow
           import os
+          from mlflow.tracking import MlflowClient
 
           mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+          client = MlflowClient()
 
 
           df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
@@ -46,18 +48,16 @@ jobs:
           print(f"Target Run ID: {run_id}")
 
 
-          artifact_uri = f"runs:/{run_id}"
-          mlflow.artifacts.download_artifacts(artifact_uri=artifact_uri, dst_path='./local_model_dir')
+          client.download_artifacts(run_id=run_id, path="model", dst_path='./local_model_dir')
 
-
-          if os.path.exists('./local_model_dir/MLmodel'):
+          if os.path.exists('./local_model_dir/model/MLmodel'):
               print("File MLmodel ditemukan!")
           else:
-              raise Exception("File MLmodel tidak ditemukan di local_model_dir setelah download.")
+              raise Exception("File MLmodel tidak ditemukan")
           EOF
 
           python build_script.py
 
-          # Bangun Docker dari path lokal tersebut
-          mlflow models build-docker -m "./local_model_dir" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
+
+          mlflow models build-docker -m "./local_model_dir/model" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
