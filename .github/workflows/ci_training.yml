@@ -47,11 +47,14 @@ jobs:
           run_id = df.sort_values('start_time', ascending=False).iloc[0].run_id
 
           print(f"Mengunduh model dari Run: {run_id}")
-          client.download_artifacts(run_id=run_id, path="model", dst_path='./local_model_dir')
+
+
+          client.download_artifacts(run_id=run_id, path="", dst_path='./local_model_dir')
           EOF
 
           python build_script.py
 
 
-          mlflow models build-docker -m "./local_model_dir/model" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
+          mlflow models build-docker -m "./local_model_dir" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
+
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
