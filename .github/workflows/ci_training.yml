@@ -47,37 +47,42 @@ jobs:
           cat << 'EOF' > build_script.py
           import mlflow
           import os
+          import time
           from mlflow.tracking import MlflowClient
-
 
           tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
           mlflow.set_tracking_uri(tracking_uri)
           client = MlflowClient()
 
-
-          print("Mencari Run ID yang sukses...")
+          print("Mencari Run ID yang punya artefak model...")
           df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
-          run_id = df.sort_values('start_time', ascending=False).iloc[0].run_id
-          print(f"Menggunakan Run ID: {run_id}")
+          df_sorted = df.sort_values('start_time', ascending=False)
 
+          # Looping untuk mencari Run ID yang benar-benar punya folder 'model' (bukan Run Induk yang kosong)
+          target_run_id = None
+          for _, row in df_sorted.iterrows():
+              artifacts = client.list_artifacts(row.run_id)
+              if any(a.path == "model" for a in artifacts):
+                  target_run_id = row.run_id
+                  break
 
-          print("\n Cek artefak di DagsHub...")
-          artifacts = client.list_artifacts(run_id)
+          if not target_run_id:
+              raise Exception("Gagal! Tidak ada Run ID terbaru yang menyimpan folder 'model'.")
+              
+          print(f"Menggunakan Run ID yang valid: {target_run_id}")
 
-          if not artifacts:
-              raise Exception("Tidak ada artefak sama sekali. Berarti saat step 'Training Model' tadi, file model gagal dikirim ke DagsHub.")
-
-          print("Daftar file/folder yang berhasil ditemukan di DagsHub:")
-          for a in artifacts:
-              print(f" - {a.path}")
-
-          if not any(a.path == "model" for a in artifacts):
-              raise Exception("Folder 'model' tidak ada di daftar!")
-
-
-          print("\n Folder 'model' ditemukan! Mulai mendownload...")
-          mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{run_id}/model", dst_path='./local_model_dir')
-          print("Download selesai!")
+          print("Mendownload model artifact...")
+          for attempt in range(4):
+              try:
+                  mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{target_run_id}/model", dst_path='./local_model_dir')
+                  print(" Download artefak berhasil!")
+                  break
+              except Exception as e:
+                  print(f"Menunggu sinkronisasi DagsHub... (Percobaan {attempt+1}/4)")
+                  print(str(e))
+                  time.sleep(15)
+          else:
+              raise Exception("Gagal mendownload artefak.")
           EOF
 
           python build_script.py
