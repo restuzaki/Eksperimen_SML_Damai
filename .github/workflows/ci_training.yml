@@ -48,15 +48,17 @@ jobs:
           import mlflow
           import os
           import time
+          from mlflow.tracking import MlflowClient
 
           mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI"))
+          client = MlflowClient()
+
           print("Menunggu 20 detik agar DagsHub sinkron...")
           time.sleep(20)
 
           print("Mencari Run ID yang memiliki model...")
           df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
 
-          # Memfilter dataframe hanya untuk Run yang memiliki metadata log model
           if 'tags.mlflow.log-model.history' in df.columns:
               df_model = df[df['tags.mlflow.log-model.history'].notnull()]
           else:
@@ -65,17 +67,14 @@ jobs:
           if df_model.empty:
               raise Exception("Tidak ada Run yang menyimpan model.")
 
-
           target_run_id = df_model.sort_values('start_time', ascending=False).iloc[0].run_id
           print(f"Run ID dengan model ditemukan: {target_run_id}")
-
-          artifact_uri = f"runs:/{target_run_id}/model"
-          print(f"Mendownload dari URI: {artifact_uri}")
 
           success = False
           for attempt in range(4):
               try:
-                  mlflow.artifacts.download_artifacts(artifact_uri=artifact_uri, dst_path='./local_model_dir')
+                  # Menggunakan client.download_artifacts dengan path kosong ("") untuk mengambil dari root
+                  client.download_artifacts(run_id=target_run_id, path="", dst_path='./local_model_dir')
                   print("Download artefak berhasil.")
                   success = True
                   break
@@ -89,8 +88,18 @@ jobs:
 
           python build_script.py
 
+          echo "Mencari lokasi pasti dari file MLmodel..."
+          MODEL_DIR=$(dirname $(find ./local_model_dir -name "MLmodel" | head -n 1))
+
+          if [ -z "$MODEL_DIR" ]; then
+            echo "File MLmodel tidak ditemukan di direktori hasil download."
+            exit 1
+          fi
+
+          echo "Model ditemukan di direktori: $MODEL_DIR"
+
           echo "Membangun Docker Image..."
-          mlflow models build-docker -m "./local_model_dir" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
+          mlflow models build-docker -m "$MODEL_DIR" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
 
           echo "Mengirim Image ke Docker Hub..."
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
