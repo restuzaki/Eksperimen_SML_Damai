@@ -48,57 +48,54 @@ jobs:
           import mlflow
           import os
           import time
-          from mlflow.tracking import MlflowClient
 
-          tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
-          mlflow.set_tracking_uri(tracking_uri)
-          client = MlflowClient(tracking_uri)
-
-          print(" Menunggu 20 detik agar DagsHub selesai merapikan file...")
+          mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+          print("Menunggu 20 detik agar DagsHub memproses file...")
           time.sleep(20)
 
+          # Ambil 3 Run ID terbaru
+          df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
+          run_ids = df.sort_values('start_time', ascending=False).head(3).run_id.tolist()
 
-          df = mlflow.search_runs(search_all_experiments=True, filter_string="status = 'FINISHED'")
-          df_sorted = df.sort_values('start_time', ascending=False)
-
-          print(f" Ditemukan {len(df_sorted)} Run yang sudah Selesai. Memeriksa 3 Run terbaru...")
-
-          target_run_id = None
+          success = False
           for attempt in range(5):
-              for i, row in df_sorted.head(3).iterrows():
-                  run_id = row.run_id
-                  print(f"\n Memeriksa Run ID: {run_id}")
+              print(f"\n--- Percobaan {attempt+1}/5 ---")
+              for run_id in run_ids:
+                  print(f"Mencoba download paksa dari Run ID: {run_id}")
                   try:
-                      artifacts = client.list_artifacts(run_id)
-                      paths = [a.path for a in artifacts]
-                      print(f" Isi brankas: {paths}")
                       
-                      # Jika brankas TIDAK KOSONG, langsung ambil! (Tidak peduli apa namanya)
-                      if len(paths) > 0:
-                          target_run_id = run_id
+                      mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{run_id}", dst_path='./local_model_dir')
+                      
+                      
+                      mlmodel_exists = False
+                      for root, dirs, files in os.walk('./local_model_dir'):
+                          if 'MLmodel' in files:
+                              mlmodel_exists = True
+                              break
+                              
+                      if mlmodel_exists:
+                          print(f" File MLmodel berhasil didownload secara fisik!")
+                          success = True
                           break
+                      else:
+                          print(" Artefak terdownload, tapi isinya zonk (belum ada MLmodel).")
                   except Exception as e:
-                      print(f" Gagal mengecek artefak: {e}")
+                      print(f" Error saat download: {e}")
               
-              if target_run_id:
+              if success:
                   break
               
-              print("\n Semua brankas terbaru masih kosong. DagsHub mungkin sedang delay. Tunggu 15 detik lagi...")
+              print("Server DagsHub masih delay. Menunggu 15 detik lagi...")
               time.sleep(15)
 
-          if not target_run_id:
-              raise Exception(" Gagal! Brankas masih kosong setelah ditunggu berkali-kali.")
-
-          print(f"\n Artefak ditemukan di Run ID {target_run_id}!")
-          print("Mendownload SEMUA isi brankas ke folder lokal...")
-          mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{target_run_id}", dst_path='./local_model_dir')
-          print("Download artefak berhasil!")
+          if not success:
+              raise Exception(" Gagal total mendapatkan model dari DagsHub.")
           EOF
 
           python build_script.py
 
           echo "Mencari lokasi pasti dari file MLmodel..."
-          # Mencari folder tempat MLmodel berada secara otomatis tanpa peduli struktur folder
+
           MODEL_DIR=$(dirname $(find ./local_model_dir -name "MLmodel" | head -n 1))
           echo "Model ditemukan di direktori: $MODEL_DIR"
 
