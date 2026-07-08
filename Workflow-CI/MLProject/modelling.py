@@ -51,7 +51,11 @@ def main():
         mlflow.log_metric("f1_score", f1)
         
        
-        mlflow.sklearn.log_model(pipeline, "model")
+        mlflow.sklearn.log_model(
+            sk_model=pipeline,
+            artifact_path="model",
+            registered_model_name="PhishingModel"
+        )
         
         print(f"Model berhasil disimpan di Run ID: {run.info.run_id}")
 
