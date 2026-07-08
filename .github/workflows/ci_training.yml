@@ -48,61 +48,49 @@ jobs:
           import mlflow
           import os
           import time
-          from mlflow.tracking import MlflowClient
 
-          mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
-          client = MlflowClient()
-
-          print(" Menunggu 20 detik agar DagsHub memproses file...")
+          mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI"))
+          print("Menunggu 20 detik agar DagsHub sinkron...")
           time.sleep(20)
 
-          # Ambil 3 Run ID terbaru
+          print("Mencari Run ID yang memiliki model...")
           df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
-          run_ids = df.sort_values('start_time', ascending=False).head(3).run_id.tolist()
+
+          # Memfilter dataframe hanya untuk Run yang memiliki metadata log model
+          if 'tags.mlflow.log-model.history' in df.columns:
+              df_model = df[df['tags.mlflow.log-model.history'].notnull()]
+          else:
+              df_model = df
+
+          if df_model.empty:
+              raise Exception("Tidak ada Run yang menyimpan model.")
+
+
+          target_run_id = df_model.sort_values('start_time', ascending=False).iloc[0].run_id
+          print(f"Run ID dengan model ditemukan: {target_run_id}")
+
+          artifact_uri = f"runs:/{target_run_id}/model"
+          print(f"Mendownload dari URI: {artifact_uri}")
 
           success = False
-          for attempt in range(5):
-              print(f"\n--- Percobaan {attempt+1}/5 ---")
-              for run_id in run_ids:
-                  print(f" Mencoba download paksa dari Run ID: {run_id}")
-                  try:
-                     
-                      client.download_artifacts(run_id=run_id, path="", dst_path='./local_model_dir')
-                      
-                     
-                      mlmodel_exists = False
-                      for root, dirs, files in os.walk('./local_model_dir'):
-                          if 'MLmodel' in files:
-                              mlmodel_exists = True
-                              break
-                              
-                      if mlmodel_exists:
-                          print(f" File MLmodel berhasil didownload secara fisik!")
-                          success = True
-                          break
-                      else:
-                          print("Artefak terdownload, tapi isinya zonk (belum ada MLmodel).")
-                  except Exception as e:
-                      print(f" Error saat download: {e}")
-              
-              if success:
+          for attempt in range(4):
+              try:
+                  mlflow.artifacts.download_artifacts(artifact_uri=artifact_uri, dst_path='./local_model_dir')
+                  print("Download artefak berhasil.")
+                  success = True
                   break
-              
-              print("Server DagsHub masih delay. Menunggu 15 detik lagi...")
-              time.sleep(15)
+              except Exception as e:
+                  print(f"Percobaan {attempt+1} gagal: {e}")
+                  time.sleep(15)
 
           if not success:
-              raise Exception(" Gagal total mendapatkan model dari DagsHub.")
+              raise Exception("Gagal mendownload artefak dari DagsHub.")
           EOF
 
           python build_script.py
 
-          echo "Mencari lokasi pasti dari file MLmodel..."
-          MODEL_DIR=$(dirname $(find ./local_model_dir -name "MLmodel" | head -n 1))
-          echo "Model ditemukan di direktori: $MODEL_DIR"
-
           echo "Membangun Docker Image..."
-          mlflow models build-docker -m "$MODEL_DIR" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
+          mlflow models build-docker -m "./local_model_dir" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
 
-          echo "Mengirim (Push) Image ke Docker Hub..."
+          echo "Mengirim Image ke Docker Hub..."
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
