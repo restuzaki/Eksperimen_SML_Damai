@@ -48,9 +48,12 @@ jobs:
           import mlflow
           import os
           import time
+          from mlflow.tracking import MlflowClient
 
           mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
-          print("Menunggu 20 detik agar DagsHub memproses file...")
+          client = MlflowClient()
+
+          print(" Menunggu 20 detik agar DagsHub memproses file...")
           time.sleep(20)
 
           # Ambil 3 Run ID terbaru
@@ -61,12 +64,12 @@ jobs:
           for attempt in range(5):
               print(f"\n--- Percobaan {attempt+1}/5 ---")
               for run_id in run_ids:
-                  print(f"Mencoba download paksa dari Run ID: {run_id}")
+                  print(f" Mencoba download paksa dari Run ID: {run_id}")
                   try:
+                     
+                      client.download_artifacts(run_id=run_id, path="", dst_path='./local_model_dir')
                       
-                      mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{run_id}", dst_path='./local_model_dir')
-                      
-                      
+                     
                       mlmodel_exists = False
                       for root, dirs, files in os.walk('./local_model_dir'):
                           if 'MLmodel' in files:
@@ -78,7 +81,7 @@ jobs:
                           success = True
                           break
                       else:
-                          print(" Artefak terdownload, tapi isinya zonk (belum ada MLmodel).")
+                          print("Artefak terdownload, tapi isinya zonk (belum ada MLmodel).")
                   except Exception as e:
                       print(f" Error saat download: {e}")
               
@@ -95,7 +98,6 @@ jobs:
           python build_script.py
 
           echo "Mencari lokasi pasti dari file MLmodel..."
-
           MODEL_DIR=$(dirname $(find ./local_model_dir -name "MLmodel" | head -n 1))
           echo "Model ditemukan di direktori: $MODEL_DIR"
 
