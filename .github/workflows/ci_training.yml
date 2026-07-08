@@ -54,40 +54,44 @@ jobs:
           mlflow.set_tracking_uri(tracking_uri)
           client = MlflowClient()
 
-          print("Mencari Run ID yang punya artefak MLmodel...")
-          df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
-          df_sorted = df.sort_values('start_time', ascending=False)
+          print("Menunggu 20 detik agar DagsHub selesai memproses file hasil training...")
+          time.sleep(20)
 
           target_run_id = None
-          for _, row in df_sorted.iterrows():
-              artifacts = client.list_artifacts(row.run_id)
-              paths = [a.path for a in artifacts]
-              # Cek apakah ada file MLmodel atau folder model di dalamnya
-              if any("MLmodel" in p or "model" in p for p in paths):
-                  target_run_id = row.run_id
+          # Looping pencarian: Coba cari sampai 4 kali jika server DagsHub lambat
+          for attempt in range(4):
+              print(f"Mencari Run ID yang punya artefak MLmodel (Percobaan {attempt+1}/4)...")
+              df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
+              df_sorted = df.sort_values('start_time', ascending=False)
+              
+              for _, row in df_sorted.iterrows():
+                  artifacts = client.list_artifacts(row.run_id)
+                  paths = [a.path for a in artifacts]
+                  # Cek apakah file MLmodel sudah beres disinkronisasi
+                  if any("MLmodel" in p or "model" in p for p in paths):
+                      target_run_id = row.run_id
+                      break
+              
+              if target_run_id:
                   break
+              
+              print(" Artefak belum muncul di API DagsHub. Tunggu 15 detik lagi...")
+              time.sleep(15)
 
           if not target_run_id:
-              raise Exception("Gagal! Tidak ditemukan artefak model di DagsHub.")
+              raise Exception(" Gagal! Tidak ditemukan artefak model di DagsHub setelah ditunggu.")
               
-          print(f"Menggunakan Run ID yang valid: {target_run_id}")
+          print(f" Menggunakan Run ID yang valid: {target_run_id}")
 
           print("Mendownload SEMUA artifact dari Run tersebut...")
-          for attempt in range(4):
-              try:
-                  mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{target_run_id}", dst_path='./local_model_dir')
-                  print(" Download artefak berhasil!")
-                  break
-              except Exception as e:
-                  print(f" Menunggu sinkronisasi DagsHub... (Percobaan {attempt+1}/4)")
-                  time.sleep(15)
-          else:
-              raise Exception("Gagal mendownload artefak.")
+          mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{target_run_id}", dst_path='./local_model_dir')
+          print("Download artefak berhasil!")
           EOF
 
           python build_script.py
 
           echo "Mencari lokasi pasti dari file MLmodel..."
+          # Mencari folder tempat MLmodel berada secara otomatis
           MODEL_DIR=$(dirname $(find ./local_model_dir -name "MLmodel" | head -n 1))
           echo "Model ditemukan di direktori: $MODEL_DIR"
 
