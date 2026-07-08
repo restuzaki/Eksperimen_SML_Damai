@@ -44,7 +44,6 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-
           cat << 'EOF' > build_script.py
           import mlflow
           import os
@@ -64,23 +63,24 @@ jobs:
           artifact_uri = f"runs:/{run_id}/model"
           print(f"Mendownload model artifact dari {artifact_uri}...")
 
-
           for attempt in range(4):
               try:
                   mlflow.artifacts.download_artifacts(artifact_uri=artifact_uri, dst_path='./local_model_dir')
                   print("Download artefak berhasil!")
                   break
               except Exception as e:
-                  print(f"Artefak belum siap di DagsHub (Percobaan {attempt+1}/4). Menunggu 15 detik...")
+                  print(f" Percobaan {attempt+1}/4 gagal. DETAIL ERROR ASLI:")
+                  print(str(e))
+                  print("Menunggu 15 detik sebelum mencoba lagi...")
                   time.sleep(15)
           else:
-              raise Exception("Gagal mendownload artefak")
+              raise Exception(" Gagal mendownload artefak secara permanen.")
           EOF
 
-
+          # Menjalankan script Python tersebut
           python build_script.py
 
-
+          # Melanjutkan proses Docker
           echo "Membangun Docker Image..."
           mlflow models build-docker -m "./local_model_dir/model" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
 
