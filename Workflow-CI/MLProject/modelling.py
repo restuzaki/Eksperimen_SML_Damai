@@ -9,11 +9,14 @@ import mlflow
 import mlflow.sklearn
 
 
+import dagshub
+
 os.environ["MLFLOW_TRACKING_USERNAME"] = os.getenv("MLFLOW_TRACKING_USERNAME", "")
 os.environ["MLFLOW_TRACKING_PASSWORD"] = os.getenv("MLFLOW_TRACKING_PASSWORD", "")
 
-
 DAGSHUB_USERNAME = "restuzaki"
+# Initialize dagshub properly for artifact logging
+dagshub.init(repo_owner=DAGSHUB_USERNAME, repo_name="Eksperimen_SML_Damai", mlflow=True)
 mlflow.set_tracking_uri(f"https://dagshub.com/{DAGSHUB_USERNAME}/Eksperimen_SML_Damai.mlflow")
 
 def main():
@@ -54,6 +57,7 @@ def main():
         mlflow.sklearn.log_model(pipeline, "model")
         
         print(f"Model berhasil disimpan di Run ID: {run.info.run_id}")
+        print(f"INFO PENTING: Artifact URI untuk run ini adalah: {run.info.artifact_uri}")
 
 if __name__ == "__main__":
     main()

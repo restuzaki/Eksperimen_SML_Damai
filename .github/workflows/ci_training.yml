@@ -16,6 +16,7 @@ jobs:
       MLFLOW_TRACKING_USERNAME: restuzaki
       MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
       MLFLOW_TRACKING_URI: https://dagshub.com/restuzaki/Eksperimen_SML_Damai.mlflow
+      DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
 
     steps:
       - name: Checkout Code
