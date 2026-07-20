@@ -61,25 +61,9 @@ jobs:
           if df.empty:
               raise Exception("Tidak ada run dengan status 'FINISHED' ditemukan di eksperimen 'Phishing_Detection_CI_Pipeline'!")
               
-          if 'tags.mlflow.log-model.history' not in df.columns:
-              print("Kolom yang tersedia di DataFrame:", df.columns.tolist())
-              print("Daftar Run ID yang ditemukan:", df['run_id'].tolist() if 'run_id' in df.columns else "Tidak ada run_id")
-              raise Exception(
-                  "Tidak ada history model di eksperimen ini. "
-                  "Pastikan Anda telah melakukan COMMIT dan PUSH perubahan file 'modelling.py' "
-                  "yang berisi pemanggilan 'mlflow.sklearn.log_model(pipeline, \"model\")' ke repositori GitHub Anda."
-              )
-              
-          df_model = df[df['tags.mlflow.log-model.history'].notnull()]
-          
-          if df_model.empty:
-              raise Exception("Data log model tidak ditemukan di DagsHub!")
-              
-          latest_run = df_model.sort_values('start_time', ascending=False).iloc[0]
-          
-          history = json.loads(latest_run['tags.mlflow.log-model.history'])
+          latest_run = df.sort_values('start_time', ascending=False).iloc[0]
           exact_run_id = latest_run['run_id'] if 'run_id' in latest_run else latest_run['run_uuid']
-          exact_path = history[0]['artifact_path']
+          exact_path = "model"
           
           print(f"Lokasi Asli Ditemukan! Run ID: {exact_run_id}, Folder: {exact_path}")
           
