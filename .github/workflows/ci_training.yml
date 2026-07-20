@@ -47,16 +47,22 @@ jobs:
           cat << 'EOF' > build_script.py
           import mlflow
           import os
-          import json
           import time
+          from mlflow.tracking import MlflowClient
 
-          mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI"))
+          tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
+          mlflow.set_tracking_uri(tracking_uri)
+          client = MlflowClient(tracking_uri=tracking_uri)
           
           print("Menunggu 15 detik agar DagsHub sinkron...")
           time.sleep(15)
 
           print("Mencari catatan log lokasi model yang paling akurat...")
-          df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
+          experiment = client.get_experiment_by_name('Phishing_Detection_CI_Pipeline')
+          if not experiment:
+              raise Exception("Eksperimen 'Phishing_Detection_CI_Pipeline' tidak ditemukan!")
+              
+          df = mlflow.search_runs(experiment_ids=[experiment.experiment_id], filter_string="status = 'FINISHED'")
           
           if df.empty:
               raise Exception("Tidak ada run dengan status 'FINISHED' ditemukan di eksperimen 'Phishing_Detection_CI_Pipeline'!")
@@ -67,11 +73,25 @@ jobs:
           
           print(f"Lokasi Asli Ditemukan! Run ID: {exact_run_id}, Folder: {exact_path}")
           
-          model_uri = f"runs:/{exact_run_id}/{exact_path}"
-          print(f"Mendownload dari URI: {model_uri}")
+          try:
+              artifacts = client.list_artifacts(exact_run_id)
+              print(f"Artifacts in run {exact_run_id}: {[a.path for a in artifacts]}")
+          except Exception as e:
+              print(f"Gagal list artifacts: {e}")
           
-          mlflow.artifacts.download_artifacts(artifact_uri=model_uri, dst_path='./local_model_dir')
-          print("Proses download via Python selesai.")
+          print(f"Mendownload artifact path: {exact_path}")
+          try:
+              local_dir = client.download_artifacts(exact_run_id, exact_path, './local_model_dir')
+              print(f"Proses download via Python selesai. Path: {local_dir}")
+          except Exception as e:
+              print(f"Gagal download dengan path {exact_path}: {e}")
+              if 'artifacts' in locals() and artifacts:
+                  fallback_path = artifacts[0].path
+                  print(f"Mencoba download dari fallback path: {fallback_path}")
+                  local_dir = client.download_artifacts(exact_run_id, fallback_path, './local_model_dir')
+                  print(f"Proses download fallback selesai. Path: {local_dir}")
+              else:
+                  raise Exception("Tidak ada artifact untuk didownload!")
           EOF
 
           python build_script.py
