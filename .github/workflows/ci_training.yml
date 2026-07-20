@@ -34,7 +34,7 @@ jobs:
       - name: Run MLflow Project (Training Model)
         run: |
           echo "Menjalankan pelatihan model otomatis..."
-          mlflow run Workflow-CI/MLProject/ --env-manager=local --experiment-name="Phishing_Detection_CI_Pipeline"
+          mlflow run Workflow-CI/MLProject/ --env-manager=local --experiment-name="Phishing_Detection_CI_Pipeline_V2"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
@@ -58,14 +58,14 @@ jobs:
           time.sleep(15)
 
           print("Mencari catatan log lokasi model yang paling akurat...")
-          experiment = client.get_experiment_by_name('Phishing_Detection_CI_Pipeline')
+          experiment = client.get_experiment_by_name('Phishing_Detection_CI_Pipeline_V2')
           if not experiment:
-              raise Exception("Eksperimen 'Phishing_Detection_CI_Pipeline' tidak ditemukan!")
+              raise Exception("Eksperimen 'Phishing_Detection_CI_Pipeline_V2' tidak ditemukan!")
               
           df = mlflow.search_runs(experiment_ids=[experiment.experiment_id], filter_string="status = 'FINISHED'")
           
           if df.empty:
-              raise Exception("Tidak ada run dengan status 'FINISHED' ditemukan di eksperimen 'Phishing_Detection_CI_Pipeline'!")
+              raise Exception("Tidak ada run dengan status 'FINISHED' ditemukan di eksperimen 'Phishing_Detection_CI_Pipeline_V2'!")
               
           recent_runs = df.sort_values('start_time', ascending=False)
           
