@@ -50,9 +50,8 @@ def main():
         mlflow.log_metric("accuracy", acc)
         mlflow.log_metric("f1_score", f1)
         
-       
-        
-        
+        # Log model ke MLflow
+        mlflow.sklearn.log_model(pipeline, "model")
         
         print(f"Model berhasil disimpan di Run ID: {run.info.run_id}")
 

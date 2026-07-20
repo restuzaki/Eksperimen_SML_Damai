@@ -42,65 +42,60 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-          - name: Build and Push Docker Image
-          run: |
-            cat << 'EOF' > build_script.py
-            import mlflow
-            import os
-            import json
-            import time
-  
-            mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI"))
-            
-            print("Menunggu 15 detik agar DagsHub sinkron...")
-            time.sleep(15)
-  
-            print("Mencari catatan log lokasi model yang paling akurat...")
-            df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
-            
-           
-            if 'tags.mlflow.log-model.history' not in df.columns:
-                raise Exception("Tidak ada history model di eksperimen ini.")
-                
-            df_model = df[df['tags.mlflow.log-model.history'].notnull()]
-            
-            if df_model.empty:
-                raise Exception("Data log model tidak ditemukan di DagsHub!")
-                
-           
-            latest_run = df_model.sort_values('start_time', ascending=False).iloc[0]
-            
-            
-            history = json.loads(latest_run['tags.mlflow.log-model.history'])
-            exact_run_id = history[0]['run_id']
-            exact_path = history[0]['artifact_path']
-            
-            print(f"Lokasi Asli Ditemukan! Run ID: {exact_run_id}, Folder: {exact_path}")
-            
-            
-            model_uri = f"runs:/{exact_run_id}/{exact_path}"
-            print(f"Mendownload dari URI: {model_uri}")
-            
-            
-            mlflow.artifacts.download_artifacts(artifact_uri=model_uri, dst_path='./local_model_dir')
-            print("Proses download via Python selesai.")
-            EOF
-  
-            python build_script.py
-  
-            echo "Memverifikasi dan mencari letak fisik file MLmodel..."
-            # Cari di mana MLmodel diletakkan oleh fungsi download tadi
-            MODEL_DIR=$(dirname $(find ./local_model_dir -name "MLmodel" | head -n 1))
-            
-            if [ -z "$MODEL_DIR" ]; then
-              echo "Error: MLmodel tetap tidak ditemukan di harddisk lokal!"
-              exit 1
-            fi
-            
-            echo "Direktori model siap: $MODEL_DIR"
-  
-            echo "Membangun Docker Image..."
-            mlflow models build-docker -m "$MODEL_DIR" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
-  
-            echo "Mengirim Image ke Docker Hub..."
-            docker push ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
+      - name: Build and Push Docker Image
+        run: |
+          cat << 'EOF' > build_script.py
+          import mlflow
+          import os
+          import json
+          import time
+
+          mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI"))
+          
+          print("Menunggu 15 detik agar DagsHub sinkron...")
+          time.sleep(15)
+
+          print("Mencari catatan log lokasi model yang paling akurat...")
+          df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
+          
+          if 'tags.mlflow.log-model.history' not in df.columns:
+              raise Exception("Tidak ada history model di eksperimen ini.")
+              
+          df_model = df[df['tags.mlflow.log-model.history'].notnull()]
+          
+          if df_model.empty:
+              raise Exception("Data log model tidak ditemukan di DagsHub!")
+              
+          latest_run = df_model.sort_values('start_time', ascending=False).iloc[0]
+          
+          history = json.loads(latest_run['tags.mlflow.log-model.history'])
+          exact_run_id = latest_run['run_id'] if 'run_id' in latest_run else latest_run['run_uuid']
+          exact_path = history[0]['artifact_path']
+          
+          print(f"Lokasi Asli Ditemukan! Run ID: {exact_run_id}, Folder: {exact_path}")
+          
+          model_uri = f"runs:/{exact_run_id}/{exact_path}"
+          print(f"Mendownload dari URI: {model_uri}")
+          
+          mlflow.artifacts.download_artifacts(artifact_uri=model_uri, dst_path='./local_model_dir')
+          print("Proses download via Python selesai.")
+          EOF
+
+          python build_script.py
+
+          echo "Memverifikasi dan mencari letak fisik file MLmodel..."
+          # Cari di mana MLmodel diletakkan oleh fungsi download tadi
+          MODEL_DIR=$(dirname $(find ./local_model_dir -name "MLmodel" | head -n 1))
+          
+          if [ -z "$MODEL_DIR" ]; then
+            echo "Error: MLmodel tetap tidak ditemukan di harddisk lokal!"
+            exit 1
+          fi
+          
+          echo "Direktori model siap: $MODEL_DIR"
+
+          echo "Membangun Docker Image..."
+          mlflow models build-docker -m "$MODEL_DIR" -n ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
+
+          echo "Mengirim Image ke Docker Hub..."
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/phishing-model:latest
