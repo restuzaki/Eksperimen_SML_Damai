@@ -51,6 +51,13 @@ def main():
         # Log model ke MLflow
         mlflow.sklearn.log_model(pipeline, "model")
         
+        # Simpan lokal untuk Docker build (bypass error DagsHub)
+        import shutil
+        local_model_path = os.path.join(os.environ.get("GITHUB_WORKSPACE", os.getcwd()), "local_model_dir")
+        if os.path.exists(local_model_path):
+            shutil.rmtree(local_model_path)
+        mlflow.sklearn.save_model(pipeline, local_model_path)
+        
         print(f"Model berhasil disimpan di Run ID: {run.info.run_id}")
         print(f"INFO PENTING: Artifact URI untuk run ini adalah: {run.info.artifact_uri}")
 
