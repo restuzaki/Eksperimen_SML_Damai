@@ -9,15 +9,10 @@ import mlflow
 import mlflow.sklearn
 
 
-import dagshub
-
-os.environ["MLFLOW_TRACKING_USERNAME"] = os.getenv("MLFLOW_TRACKING_USERNAME", "")
-os.environ["MLFLOW_TRACKING_PASSWORD"] = os.getenv("MLFLOW_TRACKING_PASSWORD", "")
-
 DAGSHUB_USERNAME = "restuzaki"
-# Initialize dagshub properly for artifact logging
-dagshub.init(repo_owner=DAGSHUB_USERNAME, repo_name="Eksperimen_SML_Damai", mlflow=True)
-mlflow.set_tracking_uri(f"https://dagshub.com/{DAGSHUB_USERNAME}/Eksperimen_SML_Damai.mlflow")
+os.environ["MLFLOW_TRACKING_USERNAME"] = os.getenv("MLFLOW_TRACKING_USERNAME", DAGSHUB_USERNAME)
+os.environ["MLFLOW_TRACKING_PASSWORD"] = os.getenv("MLFLOW_TRACKING_PASSWORD", "")
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", f"https://dagshub.com/{DAGSHUB_USERNAME}/Eksperimen_SML_Damai.mlflow"))
 
 def main():
     print("Memuat dataset untuk CI Retraining...")
@@ -28,7 +23,7 @@ def main():
     y = df['Label']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    mlflow.set_experiment("Phishing_Detection_CI_Pipeline_V2")
+    mlflow.set_experiment("Phishing_Detection_CI_Pipeline_V3")
 
     with mlflow.start_run() as run:
         print("Melatih model dengan parameter terbaik...")
