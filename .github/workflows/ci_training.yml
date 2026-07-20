@@ -58,8 +58,17 @@ jobs:
           print("Mencari catatan log lokasi model yang paling akurat...")
           df = mlflow.search_runs(experiment_names=['Phishing_Detection_CI_Pipeline'], filter_string="status = 'FINISHED'")
           
+          if df.empty:
+              raise Exception("Tidak ada run dengan status 'FINISHED' ditemukan di eksperimen 'Phishing_Detection_CI_Pipeline'!")
+              
           if 'tags.mlflow.log-model.history' not in df.columns:
-              raise Exception("Tidak ada history model di eksperimen ini.")
+              print("Kolom yang tersedia di DataFrame:", df.columns.tolist())
+              print("Daftar Run ID yang ditemukan:", df['run_id'].tolist() if 'run_id' in df.columns else "Tidak ada run_id")
+              raise Exception(
+                  "Tidak ada history model di eksperimen ini. "
+                  "Pastikan Anda telah melakukan COMMIT dan PUSH perubahan file 'modelling.py' "
+                  "yang berisi pemanggilan 'mlflow.sklearn.log_model(pipeline, \"model\")' ke repositori GitHub Anda."
+              )
               
           df_model = df[df['tags.mlflow.log-model.history'].notnull()]
           
@@ -84,7 +93,6 @@ jobs:
           python build_script.py
 
           echo "Memverifikasi dan mencari letak fisik file MLmodel..."
-          # Cari di mana MLmodel diletakkan oleh fungsi download tadi
           MODEL_DIR=$(dirname $(find ./local_model_dir -name "MLmodel" | head -n 1))
           
           if [ -z "$MODEL_DIR" ]; then
